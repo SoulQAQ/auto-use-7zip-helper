@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自动打包器</title>
+    <style>
+        /* CSS变量定义 */
+        :root {
+            --primary-color: #4a90d9;
+            --primary-hover: #357abd;
+            --danger-color: #e74c3c;
+            --danger-hover: #c0392b;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --bg-color: #f5f7fa;
+            --card-bg: #ffffff;
+            --border-color: #dcdfe6;
+            --text-primary: #303133;
+            --text-secondary: #606266;
+            --text-placeholder: #c0c4cc;
+            --shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+            --radius: 6px;
+            --transition: all 0.3s ease;
+        }
+
+        /* 基础样式重置 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            font-size: 13px;
+            color: var(--text-primary);
+            background: var(--bg-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 状态指示点 */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ff6b6b;
+        }
+
+        .status-dot.valid {
+            background: #51cf66;
+        }
+
+        /* 主容器 */
+        .main-container {
+            flex: 1;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow: hidden;
+        }
+
+        /* 拖拽区 */
+        .drop-zone {
+            background: var(--card-bg);
+            border: 2px dashed var(--border-color);
+            border-radius: var(--radius);
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            border-color: var(--primary-color);
+            background: rgba(74, 144, 217, 0.05);
+        }
+
+        .drop-zone.drag-over {
+            transform: scale(1.01);
+        }
+
+        .drop-zone-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+            color: var(--text-placeholder);
+        }
+
+        .drop-zone-text {
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        .drop-zone-hint {
+            color: var(--text-placeholder);
+            font-size: 11px;
+            margin-top: 4px;
+        }
+
+        /* 文件列表区 */
+        .file-list-section {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 120px;
+            overflow: hidden;
+        }
+
+        .section-header {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #fafbfc;
+        }
+
+        .section-title {
+            font-weight: 500;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .file-count {
+            background: var(--primary-color);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+
+        .file-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 10px;
+            background: #fafbfc;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            transition: var(--transition);
+        }
+
+        .file-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .file-item:hover {
+            background: #f0f2f5;
+        }
+
+        .file-icon {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary-color);
+        }
+
+        .file-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .file-name {
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-path {
+            font-size: 11px;
+            color: var(--text-placeholder);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-remove {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            color: var(--text-placeholder);
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+
+        .file-remove:hover {
+            background: #fee;
+            color: var(--danger-color);
+        }
+
+        .empty-list {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-placeholder);
+            font-size: 12px;
+        }
+
+        /* 设置区 */
+        .settings-section {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 14px;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .setting-item.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .setting-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .setting-input {
+            height: 32px;
+            padding: 0 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 13px;
+            transition: var(--transition);
+            outline: none;
+        }
+
+        .setting-input:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.2);
+        }
+
+        .setting-input:disabled {
+            background: #f5f7fa;
+            cursor: not-allowed;
+        }
+
+        .setting-textarea {
+            width: 100%;
+            min-height: 60px;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            resize: vertical;
+            transition: var(--transition);
+            outline: none;
+        }
+
+        .setting-textarea:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.2);
+        }
+
+        .setting-textarea::placeholder {
+            color: var(--text-placeholder);
+        }
+
+        .output-dir-wrapper {
+            display: flex;
+            gap: 8px;
+        }
+
+        .output-dir-wrapper .setting-input {
+            flex: 1;
+        }
+
+        .output-mode-row {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: nowrap;
+            width: 100%;
+            min-height: 32px;
+        }
+
+        .output-mode-row .radio-group {
+            flex: 0 0 auto;
+            flex-wrap: nowrap;
+        }
+
+        .output-dir-inline {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            margin-left: auto;
+            width: 380px;
+            max-width: 48%;
+            min-width: 260px;
+        }
+
+        .output-dir-inline.active {
+            display: flex;
+        }
+
+        .output-dir-inline .setting-input {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .btn-browse {
+            padding: 0 12px;
+            height: 32px;
+            border: 1px solid var(--border-color);
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--text-secondary);
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+
+        .btn-browse:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        /* 单选框组 */
+        .radio-group {
+            display: flex;
+            gap: 16px;
+        }
+
+        .radio-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .radio-item input[type="radio"] {
+            width: 14px;
+            height: 14px;
+            accent-color: var(--primary-color);
+        }
+
+        .radio-item label {
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        /* 底部操作栏 */
+        .bottom-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+            margin-top: auto;
+            border-top: 1px solid var(--border-color);
+            gap: 16px;
+        }
+
+        .bottom-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .bottom-left .btn-settings {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 4px;
+            transition: var(--transition);
+            color: var(--text-secondary);
+        }
+
+        .bottom-left .btn-settings:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+        }
+
+        .bottom-right {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            height: 36px;
+            padding: 0 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-hover);
+        }
+
+        .btn-danger {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: var(--danger-hover);
+        }
+
+        .btn-secondary {
+            background: #f0f2f5;
+            color: var(--text-secondary);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e4e7ed;
+        }
+
+        /* 结果对话框 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: var(--transition);
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            width: 90%;
+            max-width: 400px;
+            transform: scale(0.9);
+            transition: var(--transition);
+        }
+
+        .modal-overlay.active .modal {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .modal-icon.success {
+            background: rgba(39, 174, 96, 0.1);
+            color: var(--success-color);
+        }
+
+        .modal-icon.error {
+            background: rgba(231, 76, 60, 0.1);
+            color: var(--danger-color);
+        }
+
+        .modal-title {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .modal-body {
+            padding: 16px;
+        }
+
+        .result-item {
+            margin-bottom: 12px;
+        }
+
+        .result-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .result-value {
+            font-size: 13px;
+            padding: 8px 10px;
+            background: #f5f7fa;
+            border-radius: 4px;
+            word-break: break-all;
+        }
+
+        .result-value.password {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary-color);
+            text-align: center;
+            letter-spacing: 2px;
+        }
+
+        .result-value-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .result-value-row .result-value {
+            flex: 1;
+        }
+
+        .btn-copy {
+            background: var(--primary-color);
+            border: none;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: var(--transition);
+        }
+
+        .btn-copy:hover {
+            background: var(--primary-hover);
+        }
+
+        .modal-footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        /* 加载状态 */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            opacity: 0;
+            visibility: hidden;
+            transition: var(--transition);
+        }
+
+        .loading-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            margin-top: 12px;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        /* Toast提示 */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            background: var(--text-primary);
+            color: white;
+            border-radius: 4px;
+            font-size: 13px;
+            z-index: 1001;
+            transform: translateX(120%);
+            transition: var(--transition);
+        }
+
+        .toast.active {
+            transform: translateX(0);
+        }
+
+        .toast.error {
+            background: var(--danger-color);
+        }
+
+        .toast.success {
+            background: var(--success-color);
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #c0c4cc;
+        }
+    </style>
+</head>
+<body>
+    <!-- 主容器（无标题栏） -->
+    <main class="main-container">
+        <!-- 拖拽区 -->
+        <div class="drop-zone" id="dropZone">
+            <div class="drop-zone-icon">📁</div>
+            <div class="drop-zone-text">拖拽文件/文件夹到此处</div>
+            <div class="drop-zone-hint">或点击选择文件</div>
+        </div>
+
+        <!-- 文件列表区 -->
+        <section class="file-list-section">
+            <div class="section-header">
+                <div class="section-title">
+                    已添加文件
+                    <span class="file-count" id="fileCount">0</span>
+                </div>
+                <button class="btn-browse" id="btnAddFiles">+ 添加文件</button>
+            </div>
+            <div class="file-list" id="fileList">
+                <div class="empty-list" id="emptyList">
+                    <span>暂无文件</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 设置区 -->
+        <section class="settings-section">
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label class="setting-label">压缩包名称</label>
+                    <input type="text" class="setting-input" id="archiveName" placeholder="输入名称（不含.7z）">
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">文本类型</label>
+                    <div class="radio-group" id="textTypeGroup">
+                        <div class="radio-item">
+                            <input type="radio" name="textType" id="textType1" value="说明文本" checked>
+                            <label for="textType1">说明文本</label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" name="textType" id="textType2" value="游戏简介">
+                            <label for="textType2">游戏简介</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="setting-item full-width">
+                    <label class="setting-label">文本内容（可选）</label>
+                    <textarea class="setting-textarea" id="textContent" placeholder="输入说明文本内容，留空则创建空文件"></textarea>
+                </div>
+                <div class="setting-item full-width">
+                    <label class="setting-label">输出目录</label>
+                    <div class="output-mode-row">
+                        <div class="radio-group" id="outputModeGroup">
+                            <div class="radio-item">
+                                <input type="radio" name="outputMode" id="outputMode1" value="same" checked>
+                                <label for="outputMode1">同目录</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="radio" name="outputMode" id="outputMode2" value="subfolder">
+                                <label for="outputMode2">同目录/打包/</label>
+                            </div>
+                            <div class="radio-item">
+                                <input type="radio" name="outputMode" id="outputMode3" value="custom">
+                                <label for="outputMode3">自定义</label>
+                            </div>
+                        </div>
+                        <div class="output-dir-inline" id="customOutputDirItem">
+                            <input type="text" class="setting-input" id="outputDir" placeholder="选择输出目录" readonly>
+                            <button class="btn-browse" id="btnBrowseOutput">选择</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 底部操作栏 -->
+        <div class="bottom-bar">
+            <div class="bottom-left">
+                <span class="status-dot" id="sevenZipStatus"></span>
+                <span id="sevenZipText">检测7z...</span>
+                <button class="btn-settings" id="btnSettings" title="设置">⚙️ 设置</button>
+            </div>
+            <div class="bottom-right">
+                <button class="btn btn-secondary" id="btnClear">清空列表</button>
+                <button class="btn btn-primary" id="btnStart">开始打包</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 加载遮罩 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loadingText">正在打包...</div>
+    </div>
+
+    <!-- 结果对话框 -->
+    <div class="modal-overlay" id="resultModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-icon" id="modalIcon">✓</div>
+                <div class="modal-title" id="modalTitle">打包完成</div>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- 动态内容 -->
+            </div>
+            <div class="modal-footer" id="modalFooter">
+                <!-- 动态按钮 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 设置弹窗 -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal" style="max-width: 450px;">
+            <div class="modal-header">
+                <div class="modal-icon" style="background: rgba(74, 144, 217, 0.1); color: var(--primary-color);">⚙️</div>
+                <div class="modal-title">设置</div>
+            </div>
+            <div class="modal-body">
+                <div class="setting-item">
+                    <label class="setting-label">7-Zip 路径</label>
+                    <div class="output-dir-wrapper">
+                        <input type="text" class="setting-input" id="settingsSevenZipPath" placeholder="选择 7z.exe 路径">
+                        <button class="btn-browse" id="btnBrowseSevenZip">选择文件</button>
+                    </div>
+                </div>
+                <div class="setting-item" style="margin-top: 12px;">
+                    <div style="font-size: 12px; color: var(--text-secondary);">
+                        <span id="settingsSevenZipStatus"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSettingsModal()">取消</button>
+                <button class="btn btn-primary" id="btnSaveSettings">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast提示 -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ============================================================================
+        // 状态管理
+        // ============================================================================
+        const state = {
+            sourceFiles: [],        // 源文件路径列表
+            archiveName: '',        // 压缩包名称
+            textType: '说明文本',   // 文本类型
+            textContent: '',        // 文本内容
+            outputMode: 'same',     // 输出目录模式: same/subfolder/custom
+            outputDir: '',          // 输出目录（自定义模式）
+            sevenZipValid: false,   // 7z是否可用
+            sevenZipPath: '',       // 7z路径
+            isProcessing: false     // 是否正在处理
+        };
+
+        // ============================================================================
+        // API调用封装
+        // ============================================================================
+        async function callApi(method, payload = {}) {
+            if (!window.pywebview || !window.pywebview.api) {
+                throw new Error('pywebview API 不可用');
+            }
+            return window.pywebview.api[method](payload);
+        }
+
+        // ============================================================================
+        // 工具函数
+        // ============================================================================
+        function getFileName(path) {
+            const parts = path.replace(/\\/g, '/').split('/');
+            return parts[parts.length - 1] || path;
+        }
+
+        function getFileBaseName(path) {
+            const name = getFileName(path);
+            const dotIndex = name.lastIndexOf('.');
+            return dotIndex > 0 ? name.substring(0, dotIndex) : name;
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast active ' + type;
+            setTimeout(() => {
+                toast.classList.remove('active');
+            }, 3000);
+        }
+
+        function showLoading(show, text = '正在处理...') {
+            const overlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            loadingText.textContent = text;
+            if (show) {
+                overlay.classList.add('active');
+            } else {
+                overlay.classList.remove('active');
+            }
+        }
+
+        // ============================================================================
+        // 文件列表渲染
+        // ============================================================================
+        function renderFileList() {
+            const fileList = document.getElementById('fileList');
+            const fileCount = document.getElementById('fileCount');
+            const emptyList = document.getElementById('emptyList');
+
+            fileCount.textContent = state.sourceFiles.length;
+
+            if (state.sourceFiles.length === 0) {
+                fileList.innerHTML = '<div class="empty-list"><span>暂无文件</span></div>';
+                return;
+            }
+
+            fileList.innerHTML = state.sourceFiles.map((file, index) => `
+                <div class="file-item" data-index="${index}">
+                    <div class="file-icon">📄</div>
+                    <div class="file-info">
+                        <div class="file-name">${getFileName(file)}</div>
+                        <div class="file-path">${file}</div>
+                    </div>
+                    <button class="file-remove" onclick="removeFile(${index})" title="移除">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function removeFile(index) {
+            state.sourceFiles.splice(index, 1);
+            renderFileList();
+            updateArchiveNameAutoFill();
+        }
+
+        function updateArchiveNameAutoFill() {
+            const archiveNameInput = document.getElementById('archiveName');
+            // 当只有1个文件时自动填入名称
+            if (state.sourceFiles.length === 1 && !state.archiveName) {
+                state.archiveName = getFileBaseName(state.sourceFiles[0]);
+                archiveNameInput.value = state.archiveName;
+            } else if (state.sourceFiles.length === 0) {
+                state.archiveName = '';
+                archiveNameInput.value = '';
+            }
+        }
+
+        // ============================================================================
+        // 拖拽功能
+        // ============================================================================
+        function setupDragDrop() {
+            const dropZone = document.getElementById('dropZone');
+
+            // 阻止默认拖拽行为
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+
+            // 高亮拖拽区域
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => {
+                    dropZone.classList.add('drag-over');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => {
+                    dropZone.classList.remove('drag-over');
+                }, false);
+            });
+
+            // 处理拖放
+            dropZone.addEventListener('drop', handleDrop, false);
+        }
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        async function handleDrop(e) {
+            const files = e?.dataTransfer?.files;
+            if (!files || files.length === 0) return;
+
+            // 浏览器原生事件中优先取 pywebview 注入字段，其次取 path
+            const paths = Array.from(files)
+                .map(file => file.pywebviewFullPath || file.path)
+                .filter(Boolean);
+
+            // 在 pywebview 中，主要由 Python 侧 drop 监听回调 window.handleNativeDrop 处理。
+            // 这里仅做兜底，避免重复报错。
+            if (paths.length > 0) {
+                await addFiles(paths);
+            }
+        }
+
+        async function addFiles(paths) {
+            // 过滤掉已存在的文件
+            const newPaths = paths.filter(p => !state.sourceFiles.includes(p));
+            if (newPaths.length === 0) {
+                showToast('文件已存在', 'info');
+                return;
+            }
+
+            state.sourceFiles.push(...newPaths);
+            renderFileList();
+            updateArchiveNameAutoFill();
+            showToast(`已添加 ${newPaths.length} 个文件`, 'success');
+        }
+
+        // Python 侧 drop 事件回调入口
+        window.handleNativeDrop = async function(paths) {
+            if (!Array.isArray(paths) || paths.length === 0) return;
+            await addFiles(paths);
+        };
+
+        // ============================================================================
+        // 文件选择对话框
+        // ============================================================================
+        async function pickFiles() {
+            try {
+                const result = await callApi('pick_files');
+                if (result.success && result.data.files.length > 0) {
+                    await addFiles(result.data.files);
+                }
+            } catch (error) {
+                showToast('选择文件失败: ' + error.message, 'error');
+            }
+        }
+
+        async function pickOutputDir() {
+            try {
+                const result = await callApi('pick_output_dir');
+                if (result.success && result.data.output_dir) {
+                    state.outputDir = result.data.output_dir;
+                    document.getElementById('outputDir').value = state.outputDir;
+                }
+            } catch (error) {
+                showToast('选择目录失败: ' + error.message, 'error');
+            }
+        }
+
+        // ============================================================================
+        // 7z验证
+        // ============================================================================
+        async function validateSevenZip(autoOpenSettings = false) {
+            try {
+                const result = await callApi('validate_seven_zip');
+                const statusDot = document.getElementById('sevenZipStatus');
+                const statusText = document.getElementById('sevenZipText');
+
+                if (result.success && result.data.exists) {
+                    state.sevenZipValid = true;
+                    state.sevenZipPath = result.data.path;
+                    statusDot.classList.add('valid');
+                    statusText.textContent = '7z可用';
+                    statusText.style.cursor = 'default';
+                    statusText.onclick = null;
+                } else {
+                    state.sevenZipValid = false;
+                    state.sevenZipPath = result.data?.path || '';
+                    statusDot.classList.remove('valid');
+                    statusText.textContent = '7z不可用（点击设置）';
+                    statusText.style.cursor = 'pointer';
+                    statusText.onclick = openSettingsModal;
+
+                    if (autoOpenSettings) {
+                        showToast('未检测到可用的7z，请先在设置中选择 7z.exe 路径', 'error');
+                        openSettingsModal();
+                    }
+                }
+            } catch (error) {
+                console.error('验证7z失败:', error);
+            }
+        }
+
+        // ============================================================================
+        // 设置弹窗
+        // ============================================================================
+        function openSettingsModal() {
+            const modal = document.getElementById('settingsModal');
+            const pathInput = document.getElementById('settingsSevenZipPath');
+            const statusSpan = document.getElementById('settingsSevenZipStatus');
+            
+            // 填充当前7z路径
+            pathInput.value = state.sevenZipPath || '';
+            statusSpan.textContent = '';
+            
+            modal.classList.add('active');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.remove('active');
+        }
+
+        async function browseSevenZip() {
+            try {
+                const result = await callApi('pick_files');
+                if (result.success && result.data.files.length > 0) {
+                    document.getElementById('settingsSevenZipPath').value = result.data.files[0];
+                    await validateSettingsSevenZip();
+                }
+            } catch (error) {
+                showToast('选择文件失败: ' + error.message, 'error');
+            }
+        }
+
+        async function validateSettingsSevenZip() {
+            const pathInput = document.getElementById('settingsSevenZipPath');
+            const statusSpan = document.getElementById('settingsSevenZipStatus');
+            const path = pathInput.value.trim();
+            
+            if (!path) {
+                statusSpan.textContent = '';
+                return;
+            }
+            
+            // 检查路径是否有效
+            if (path.toLowerCase().endsWith('7z.exe')) {
+                statusSpan.innerHTML = '<span style="color: var(--success-color);">✓ 路径有效</span>';
+            } else {
+                statusSpan.innerHTML = '<span style="color: var(--danger-color);">✕ 请选择 7z.exe 文件</span>';
+            }
+        }
+
+        async function saveSettings() {
+            const pathInput = document.getElementById('settingsSevenZipPath');
+            const path = pathInput.value.trim();
+            
+            if (!path) {
+                showToast('请选择7z路径', 'error');
+                return;
+            }
+            
+            try {
+                const result = await callApi('update_seven_zip_path', { path: path });
+                if (result.success) {
+                    showToast('设置保存成功', 'success');
+                    closeSettingsModal();
+                    // 重新验证7z
+                    await validateSevenZip();
+                } else {
+                    showToast(result.message || '保存失败', 'error');
+                }
+            } catch (error) {
+                showToast('保存设置失败: ' + error.message, 'error');
+            }
+        }
+
+        // ============================================================================
+        // 打包操作
+        // ============================================================================
+        async function startPackaging() {
+            // 验证
+            if (state.sourceFiles.length === 0) {
+                showToast('请先添加文件', 'error');
+                return;
+            }
+
+            if (!state.archiveName.trim()) {
+                showToast('请输入压缩包名称', 'error');
+                return;
+            }
+
+            // 计算输出目录
+            const outputDir = calculateOutputDir();
+            if (!outputDir) {
+                showToast('无法确定输出目录', 'error');
+                return;
+            }
+
+            if (!state.sevenZipValid) {
+                showToast('7z不可用，请点击设置配置路径', 'error');
+                openSettingsModal();
+                return;
+            }
+
+            state.isProcessing = true;
+            showLoading(true, '正在打包...');
+
+            // 获取文本内容
+            const textContent = document.getElementById('textContent').value.trim();
+
+            try {
+                const result = await callApi('start_packaging', {
+                    source_files: state.sourceFiles,
+                    archive_name: state.archiveName.trim(),
+                    text_type: state.textType,
+                    text_content: textContent,
+                    output_dir: outputDir
+                });
+
+                showLoading(false);
+
+                if (result.success) {
+                    showResultDialog({
+                        success: true,
+                        password: result.data.password,
+                        zipPath: result.data.zip_path
+                    });
+                } else {
+                    showResultDialog({
+                        success: false,
+                        message: result.message || '打包失败'
+                    });
+                }
+            } catch (error) {
+                showLoading(false);
+                showResultDialog({
+                    success: false,
+                    message: error.message
+                });
+            }
+
+            state.isProcessing = false;
+        }
+
+        // ============================================================================
+        // 结果对话框
+        // ============================================================================
+        function showResultDialog(result) {
+            const modal = document.getElementById('resultModal');
+            const modalIcon = document.getElementById('modalIcon');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalBody = document.getElementById('modalBody');
+            const modalFooter = document.getElementById('modalFooter');
+
+            if (result.success) {
+                modalIcon.className = 'modal-icon success';
+                modalIcon.textContent = '✓';
+                modalTitle.textContent = '打包完成';
+                modalBody.innerHTML = `
+                    <div class="result-item">
+                        <div class="result-label">解压密码</div>
+                        <div class="result-value-row">
+                            <div class="result-value password" id="passwordValue">${result.password}</div>
+                            <button class="btn-copy" onclick="copyPassword()" title="复制密码">📋</button>
+                        </div>
+                    </div>
+                    <div class="result-item">
+                        <div class="result-label">输出文件</div>
+                        <div class="result-value">${result.zipPath}</div>
+                    </div>
+                `;
+                modalFooter.innerHTML = `
+                    <button class="btn btn-danger" onclick="confirmDelete()">删除源文件</button>
+                    <button class="btn btn-primary" onclick="closeModal()">完成</button>
+                `;
+            } else {
+                modalIcon.className = 'modal-icon error';
+                modalIcon.textContent = '✕';
+                modalTitle.textContent = '打包失败';
+                modalBody.innerHTML = `
+                    <div class="result-item">
+                        <div class="result-label">错误信息</div>
+                        <div class="result-value">${result.message}</div>
+                    </div>
+                `;
+                modalFooter.innerHTML = `
+                    <button class="btn btn-primary" onclick="closeModal()">关闭</button>
+                `;
+            }
+
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('resultModal').classList.remove('active');
+        }
+
+        function copyPassword() {
+            const passwordEl = document.getElementById('passwordValue');
+            if (passwordEl) {
+                const password = passwordEl.textContent;
+                navigator.clipboard.writeText(password).then(() => {
+                    showToast('密码已复制到剪贴板', 'success');
+                }).catch(err => {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = password;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    showToast('密码已复制到剪贴板', 'success');
+                });
+            }
+        }
+
+        async function confirmDelete() {
+            if (state.sourceFiles.length === 0) {
+                showToast('没有可删除的文件', 'error');
+                return;
+            }
+
+            showLoading(true, '正在删除源文件...');
+
+            try {
+                const result = await callApi('confirm_delete', {
+                    files: state.sourceFiles
+                });
+
+                showLoading(false);
+
+                if (result.success) {
+                    showToast(`已删除 ${result.data.deleted.length} 个文件`, 'success');
+                    state.sourceFiles = [];
+                    renderFileList();
+                    document.getElementById('archiveName').value = '';
+                    state.archiveName = '';
+                } else {
+                    showToast(result.message || '删除失败', 'error');
+                }
+            } catch (error) {
+                showLoading(false);
+                showToast('删除失败: ' + error.message, 'error');
+            }
+
+            closeModal();
+        }
+
+        // ============================================================================
+        // 清空列表
+        // ============================================================================
+        function clearList() {
+            if (state.sourceFiles.length === 0) return;
+
+            state.sourceFiles = [];
+            state.archiveName = '';
+            document.getElementById('archiveName').value = '';
+            renderFileList();
+            updateOutputDirDisplay();
+            showToast('已清空列表', 'success');
+        }
+
+        // ============================================================================
+        // 输出目录计算
+        // ============================================================================
+        function getDirName(filePath) {
+            // 将路径中的反斜杠替换为正斜杠，然后分割
+            const normalized = filePath.replace(/\\/g, '/');
+            const lastSlash = normalized.lastIndexOf('/');
+            return lastSlash > 0 ? normalized.substring(0, lastSlash).replace(/\//g, '\\') : filePath;
+        }
+
+        function joinPath(base, subfolder) {
+            // 确保路径分隔符正确
+            const normalized = base.replace(/\\/g, '\\');
+            return normalized + '\\' + subfolder;
+        }
+
+        function calculateOutputDir() {
+            if (state.sourceFiles.length === 0) {
+                return '';
+            }
+
+            const mode = state.outputMode;
+            const firstFile = state.sourceFiles[0];
+            const fileDir = getDirName(firstFile);
+
+            if (mode === 'same') {
+                return fileDir;
+            } else if (mode === 'subfolder') {
+                return joinPath(fileDir, '打包');
+            } else if (mode === 'custom') {
+                return state.outputDir;
+            }
+
+            return fileDir;
+        }
+
+        function updateOutputDirDisplay() {
+            const customItem = document.getElementById('customOutputDirItem');
+            const outputDirInput = document.getElementById('outputDir');
+
+            if (state.outputMode === 'custom') {
+                customItem.classList.add('active');
+                outputDirInput.value = state.outputDir;
+            } else {
+                customItem.classList.remove('active');
+                outputDirInput.value = '';
+            }
+        }
+
+        // ============================================================================
+        // 事件绑定
+        // ============================================================================
+        function bindEvents() {
+            // 拖拽区点击
+            document.getElementById('dropZone').addEventListener('click', pickFiles);
+
+            // 添加文件按钮
+            document.getElementById('btnAddFiles').addEventListener('click', pickFiles);
+
+            // 设置按钮
+            document.getElementById('btnSettings').addEventListener('click', openSettingsModal);
+
+            // 设置弹窗内的浏览按钮
+            document.getElementById('btnBrowseSevenZip').addEventListener('click', browseSevenZip);
+            
+            // 设置弹窗内的路径输入
+            document.getElementById('settingsSevenZipPath').addEventListener('input', validateSettingsSevenZip);
+
+            // 保存设置按钮
+            document.getElementById('btnSaveSettings').addEventListener('click', saveSettings);
+
+            // 选择输出目录
+            document.getElementById('btnBrowseOutput').addEventListener('click', pickOutputDir);
+
+            // 压缩包名称输入
+            document.getElementById('archiveName').addEventListener('input', (e) => {
+                state.archiveName = e.target.value;
+            });
+
+            // 文本类型选择
+            document.querySelectorAll('input[name="textType"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    state.textType = e.target.value;
+                });
+            });
+
+            // 输出目录模式选择
+            document.querySelectorAll('input[name="outputMode"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    state.outputMode = e.target.value;
+                    updateOutputDirDisplay();
+                });
+            });
+
+            // 开始打包
+            document.getElementById('btnStart').addEventListener('click', startPackaging);
+
+            // 清空列表
+            document.getElementById('btnClear').addEventListener('click', clearList);
+
+            // 点击遮罩关闭对话框
+            document.getElementById('resultModal').addEventListener('click', (e) => {
+                if (e.target.id === 'resultModal') {
+                    closeModal();
+                }
+            });
+
+            // 点击遮罩关闭设置弹窗
+            document.getElementById('settingsModal').addEventListener('click', (e) => {
+                if (e.target.id === 'settingsModal') {
+                    closeSettingsModal();
+                }
+            });
+        }
+
+        // ============================================================================
+        // 初始化
+        // ============================================================================
+        async function bootstrap() {
+            try {
+                // 获取初始状态
+                const result = await callApi('get_initial_state');
+
+                if (result.success) {
+                    const data = result.data;
+
+                    // 设置文本类型
+                    if (data.text_types && data.text_types.length > 0) {
+                        state.textType = data.selected_text_type || data.text_types[0];
+                        const radio = document.querySelector(`input[name="textType"][value="${state.textType}"]`);
+                        if (radio) radio.checked = true;
+                    }
+
+                    // 设置输出目录
+                    if (data.output_dir) {
+                        state.outputDir = data.output_dir;
+                        document.getElementById('outputDir').value = state.outputDir;
+                    }
+                }
+
+                // 验证7z（首次启动不可用时直接引导到设置）
+                await validateSevenZip(true);
+
+                // 绑定事件
+                bindEvents();
+
+                // 设置拖拽
+                setupDragDrop();
+
+                // 渲染文件列表
+                renderFileList();
+
+            } catch (error) {
+                console.error('初始化失败:', error);
+                showToast('初始化失败: ' + error.message, 'error');
+            }
+        }
+
+        // 监听 pywebview 就绪
+        window.addEventListener('pywebviewready', bootstrap);
+
+        // 备用：如果 pywebview 已经就绪
+        if (window.pywebview && window.pywebview.api) {
+            bootstrap();
+        }
+    </script>
+</body>
+</html>

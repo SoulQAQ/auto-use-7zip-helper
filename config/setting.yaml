@@ -1,0 +1,11 @@
+app_settings:
+  language: zh-CN
+  seven_zip_path: F:\soft\7-Zip\7z.exe
+text_types:
+- label: 说明文本
+  value: 说明文本
+- label: 游戏简介
+  value: 游戏简介
+user_settings:
+  auto_delete_source: false
+  last_text_type: 说明文本
