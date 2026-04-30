@@ -725,15 +725,12 @@
                 </div>
                 <div class="setting-item">
                     <label class="setting-label">文本类型</label>
-                    <div class="radio-group" id="textTypeGroup">
-                        <div class="radio-item">
-                            <input type="radio" name="textType" id="textType1" value="说明文本" checked>
-                            <label for="textType1">说明文本</label>
-                        </div>
-                        <div class="radio-item">
-                            <input type="radio" name="textType" id="textType2" value="游戏简介">
-                            <label for="textType2">游戏简介</label>
-                        </div>
+                    <div class="text-type-wrapper" style="display: flex; gap: 8px; align-items: center;">
+                        <select class="setting-input" id="textTypeSelect" style="flex: 1;">
+                            <option value="说明文本">说明文本</option>
+                            <option value="游戏简介">游戏简介</option>
+                        </select>
+                        <button class="btn-browse" id="btnAddTextType" title="添加新类型">+ 添加</button>
                     </div>
                 </div>
                 <div class="setting-item full-width">
@@ -770,7 +767,7 @@
         <div class="bottom-bar">
             <div class="bottom-left">
                 <span class="status-dot" id="sevenZipStatus"></span>
-                <span id="sevenZipText">检测7z...</span>
+                <span id="sevenZipText">加载中...</span>
                 <button class="btn-settings" id="btnSettings" title="设置">⚙️ 设置</button>
             </div>
             <div class="bottom-right">
@@ -833,6 +830,26 @@
     <!-- Toast提示 -->
     <div class="toast" id="toast"></div>
 
+    <!-- 添加文本类型对话框 -->
+    <div class="modal-overlay" id="addTextTypeModal">
+        <div class="modal" style="max-width: 350px;">
+            <div class="modal-header">
+                <div class="modal-icon" style="background: rgba(74, 144, 217, 0.1); color: var(--primary-color);">+</div>
+                <div class="modal-title">添加文本类型</div>
+            </div>
+            <div class="modal-body">
+                <div class="setting-item">
+                    <label class="setting-label">类型名称</label>
+                    <input type="text" class="setting-input" id="newTextTypeInput" placeholder="输入新的文本类型名称">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddTextTypeModal()">取消</button>
+                <button class="btn btn-primary" id="btnConfirmAddTextType">确认添加</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // ============================================================================
         // 状态管理
@@ -841,11 +858,13 @@
             sourceFiles: [],        // 源文件路径列表
             archiveName: '',        // 压缩包名称
             textType: '说明文本',   // 文本类型
+            textTypes: ['说明文本', '游戏简介'], // 可选文本类型列表
             textContent: '',        // 文本内容
             outputMode: 'same',     // 输出目录模式: same/subfolder/custom
             outputDir: '',          // 输出目录（自定义模式）
             sevenZipValid: false,   // 7z是否可用
             sevenZipPath: '',       // 7z路径
+            resultZipPath: '',      // 最近一次打包输出文件
             isProcessing: false     // 是否正在处理
         };
 
@@ -856,7 +875,11 @@
             if (!window.pywebview || !window.pywebview.api) {
                 throw new Error('pywebview API 不可用');
             }
-            return window.pywebview.api[method](payload);
+            const apiMethod = window.pywebview.api[method];
+            if (typeof apiMethod !== 'function') {
+                throw new Error(`API 方法不存在: ${method}`);
+            }
+            return apiMethod(payload);
         }
 
         // ============================================================================
@@ -1220,6 +1243,8 @@
             const modalFooter = document.getElementById('modalFooter');
 
             if (result.success) {
+                state.resultZipPath = result.zipPath || '';
+
                 modalIcon.className = 'modal-icon success';
                 modalIcon.textContent = '✓';
                 modalTitle.textContent = '打包完成';
@@ -1238,9 +1263,12 @@
                 `;
                 modalFooter.innerHTML = `
                     <button class="btn btn-danger" onclick="confirmDelete()">删除源文件</button>
+                    <button class="btn btn-secondary" onclick="openResultLocation()">查看</button>
                     <button class="btn btn-primary" onclick="closeModal()">完成</button>
                 `;
             } else {
+                state.resultZipPath = '';
+
                 modalIcon.className = 'modal-icon error';
                 modalIcon.textContent = '✕';
                 modalTitle.textContent = '打包失败';
@@ -1260,6 +1288,25 @@
 
         function closeModal() {
             document.getElementById('resultModal').classList.remove('active');
+        }
+
+        async function openResultLocation() {
+            if (!state.resultZipPath) {
+                showToast('没有可查看的输出文件', 'error');
+                return;
+            }
+
+            try {
+                const result = await callApi('reveal_output_file', {
+                    zip_path: state.resultZipPath
+                });
+
+                if (!result.success) {
+                    showToast(result.message || '打开输出位置失败', 'error');
+                }
+            } catch (error) {
+                showToast('打开输出位置失败: ' + error.message, 'error');
+            }
         }
 
         function copyPassword() {
@@ -1322,6 +1369,7 @@
             state.sourceFiles = [];
             state.archiveName = '';
             document.getElementById('archiveName').value = '';
+            document.getElementById('textContent').value = '';
             renderFileList();
             updateOutputDirDisplay();
             showToast('已清空列表', 'success');
@@ -1407,10 +1455,28 @@
             });
 
             // 文本类型选择
-            document.querySelectorAll('input[name="textType"]').forEach(radio => {
-                radio.addEventListener('change', (e) => {
-                    state.textType = e.target.value;
-                });
+            document.getElementById('textTypeSelect').addEventListener('change', (e) => {
+                state.textType = e.target.value;
+            });
+
+            // 添加文本类型按钮
+            document.getElementById('btnAddTextType').addEventListener('click', openAddTextTypeModal);
+
+            // 确认添加文本类型
+            document.getElementById('btnConfirmAddTextType').addEventListener('click', confirmAddTextType);
+
+            // 新文本类型输入框回车确认
+            document.getElementById('newTextTypeInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    confirmAddTextType();
+                }
+            });
+
+            // 点击遮罩关闭添加文本类型弹窗
+            document.getElementById('addTextTypeModal').addEventListener('click', (e) => {
+                if (e.target.id === 'addTextTypeModal') {
+                    closeAddTextTypeModal();
+                }
             });
 
             // 输出目录模式选择
@@ -1443,11 +1509,94 @@
         }
 
         // ============================================================================
+        // 文本类型下拉框管理
+        // ============================================================================
+        function renderTextTypeSelect() {
+            const select = document.getElementById('textTypeSelect');
+            select.innerHTML = state.textTypes.map(type =>
+                `<option value="${type}" ${type === state.textType ? 'selected' : ''}>${type}</option>`
+            ).join('');
+        }
+
+        function openAddTextTypeModal() {
+            const modal = document.getElementById('addTextTypeModal');
+            const input = document.getElementById('newTextTypeInput');
+            input.value = '';
+            modal.classList.add('active');
+            input.focus();
+        }
+
+        function closeAddTextTypeModal() {
+            document.getElementById('addTextTypeModal').classList.remove('active');
+        }
+
+        function confirmAddTextType() {
+            const input = document.getElementById('newTextTypeInput');
+            const newType = input.value.trim();
+
+            if (!newType) {
+                showToast('请输入类型名称', 'error');
+                return;
+            }
+
+            if (state.textTypes.includes(newType)) {
+                showToast('该类型已存在', 'error');
+                return;
+            }
+
+            // 添加新类型
+            state.textTypes.push(newType);
+            state.textType = newType;
+            renderTextTypeSelect();
+            closeAddTextTypeModal();
+            showToast(`已添加文本类型: ${newType}`, 'success');
+
+            // 保存到配置
+            saveTextTypes();
+        }
+
+        async function saveTextTypes() {
+            try {
+                await callApi('save_text_types', { text_types: state.textTypes });
+            } catch (error) {
+                console.error('保存文本类型失败:', error);
+            }
+        }
+
+        // ============================================================================
         // 初始化
         // ============================================================================
+        let bootstrapStarted = false;  // 防止重复调用
+        let bootstrapInFlight = false; // 防止并发初始化
+
+        async function waitForApiMethod(method, timeoutMs = 10000) {
+            const start = Date.now();
+
+            while (Date.now() - start < timeoutMs) {
+                if (
+                    window.pywebview &&
+                    window.pywebview.api &&
+                    typeof window.pywebview.api[method] === 'function'
+                ) {
+                    return;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+
+            throw new Error(`API 方法未就绪: ${method}`);
+        }
+
         async function bootstrap() {
+            // 防止重复调用/并发调用
+            if (bootstrapStarted || bootstrapInFlight) return;
+            bootstrapInFlight = true;
+
             try {
-                // 获取初始状态
+                // 等待关键 API 方法真正挂载完成
+                await waitForApiMethod('get_initial_state');
+
+                // 获取初始状态（包含 7z 验证结果）
                 const result = await callApi('get_initial_state');
 
                 if (result.success) {
@@ -1455,9 +1604,9 @@
 
                     // 设置文本类型
                     if (data.text_types && data.text_types.length > 0) {
+                        state.textTypes = data.text_types;
                         state.textType = data.selected_text_type || data.text_types[0];
-                        const radio = document.querySelector(`input[name="textType"][value="${state.textType}"]`);
-                        if (radio) radio.checked = true;
+                        renderTextTypeSelect();
                     }
 
                     // 设置输出目录
@@ -1465,10 +1614,27 @@
                         state.outputDir = data.output_dir;
                         document.getElementById('outputDir').value = state.outputDir;
                     }
-                }
 
-                // 验证7z（首次启动不可用时直接引导到设置）
-                await validateSevenZip(true);
+                    // 设置 7z 状态（从初始状态直接获取，无需额外 API 调用）
+                    state.sevenZipValid = data.seven_zip_valid;
+                    state.sevenZipPath = data.seven_zip_path;
+
+                    const statusDot = document.getElementById('sevenZipStatus');
+                    const statusText = document.getElementById('sevenZipText');
+
+                    if (state.sevenZipValid) {
+                        statusDot.classList.add('valid');
+                        statusText.textContent = '7z可用';
+                        statusText.style.cursor = 'default';
+                        statusText.onclick = null;
+                    } else {
+                        statusDot.classList.remove('valid');
+                        statusText.textContent = '7z不可用（点击设置）';
+                        statusText.style.cursor = 'pointer';
+                        statusText.onclick = openSettingsModal;
+                        // 不自动打开设置弹窗，避免阻塞
+                    }
+                }
 
                 // 绑定事件
                 bindEvents();
@@ -1479,19 +1645,50 @@
                 // 渲染文件列表
                 renderFileList();
 
+                // 初始化成功后再标记已启动，失败时允许后续重试
+                bootstrapStarted = true;
+
             } catch (error) {
                 console.error('初始化失败:', error);
                 showToast('初始化失败: ' + error.message, 'error');
+            } finally {
+                bootstrapInFlight = false;
             }
         }
 
-        // 监听 pywebview 就绪
-        window.addEventListener('pywebviewready', bootstrap);
+        // 带超时的 API 调用
+        async function callApiWithTimeout(method, payload = {}, timeoutMs = 10000) {
+            return new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    reject(new Error(`API 调用超时: ${method}`));
+                }, timeoutMs);
 
-        // 备用：如果 pywebview 已经就绪
-        if (window.pywebview && window.pywebview.api) {
-            bootstrap();
+                callApi(method, payload)
+                    .then(result => {
+                        clearTimeout(timeoutId);
+                        resolve(result);
+                    })
+                    .catch(error => {
+                        clearTimeout(timeoutId);
+                        reject(error);
+                    });
+            });
         }
+
+        // 监听 pywebview 就绪
+        window.addEventListener('pywebviewready', () => {
+            // 延迟一帧执行，确保 pywebview 内部完全就绪
+            requestAnimationFrame(() => {
+                bootstrap();
+            });
+        });
+
+        // 备用：如果 pywebview 已经就绪（延迟检查，避免过早调用）
+        setTimeout(() => {
+            if (window.pywebview && window.pywebview.api && !bootstrapStarted) {
+                bootstrap();
+            }
+        }, 100);
     </script>
 </body>
 </html>

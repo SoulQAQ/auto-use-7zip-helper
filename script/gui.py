@@ -5,6 +5,7 @@
 """
 
 import json
+import subprocess
 import sys
 import webview
 from pathlib import Path
@@ -40,7 +41,7 @@ DEFAULT_SEVEN_ZIP_PATH = r'C:\Program Files\7-Zip\7z.exe'
 # ============================================================================
 def load_config() -> dict:
     """
-    加载配置文件；若不存在则自动创建默认配置文件。
+    加载配置文件。
 
     返回:
         dict: 配置字典
@@ -48,9 +49,8 @@ def load_config() -> dict:
     default_config = get_default_config()
 
     try:
-        # 缺失时自动创建默认配置
+        # 配置文件应该已由 ensure_config_exists() 创建
         if not CONFIG_PATH.exists():
-            save_config(default_config)
             return default_config
 
         with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -58,7 +58,6 @@ def load_config() -> dict:
 
         # 异常内容兜底
         if not isinstance(config, dict):
-            save_config(default_config)
             return default_config
 
         # 补齐关键字段，避免旧配置缺项
@@ -100,10 +99,6 @@ def load_config() -> dict:
         return config
     except Exception as e:
         print(f"加载配置失败: {e}")
-        try:
-            save_config(default_config)
-        except Exception:
-            pass
         return default_config
 
 
@@ -183,7 +178,7 @@ class AppApi:
     def get_initial_state(self, payload=None) -> dict:
         """
         返回初始状态
-        
+
         返回:
             dict: {
                 'success': bool,
@@ -193,7 +188,8 @@ class AppApi:
                     'source_files': list,
                     'archive_name': str,
                     'output_dir': str,
-                    'seven_zip_path': str
+                    'seven_zip_path': str,
+                    'seven_zip_valid': bool
                 }
             }
         """
@@ -202,12 +198,16 @@ class AppApi:
             app_settings = config.get('app_settings', {})
             user_settings = config.get('user_settings', {})
             text_types_config = config.get('text_types', [])
-            
+
             # 提取文本类型列表
             text_types = [t.get('value', t.get('label', '')) for t in text_types_config]
             if not text_types:
                 text_types = ['说明文本', '游戏简介']
-            
+
+            # 获取 7z 路径并验证
+            seven_zip_path = app_settings.get('seven_zip_path', DEFAULT_SEVEN_ZIP_PATH)
+            seven_zip_valid = Path(seven_zip_path).exists() if seven_zip_path else False
+
             return {
                 'success': True,
                 'data': {
@@ -216,7 +216,8 @@ class AppApi:
                     'source_files': [],
                     'archive_name': '',
                     'output_dir': str(APP_DIR),
-                    'seven_zip_path': app_settings.get('seven_zip_path', r'C:\Program Files\7-Zip\7z.exe')
+                    'seven_zip_path': seven_zip_path,
+                    'seven_zip_valid': seven_zip_valid
                 }
             }
         except Exception as e:
@@ -396,6 +397,80 @@ class AppApi:
                 'success': False,
                 'message': f'更新7z路径失败: {str(e)}'
             }
+
+    def reveal_output_file(self, payload: dict = None) -> dict:
+        """
+        在资源管理器中定位输出文件。
+
+        参数:
+            payload: {'zip_path': str}
+
+        返回:
+            dict: {'success': bool, 'message': str}
+        """
+        try:
+            if not payload or 'zip_path' not in payload:
+                return {
+                    'success': False,
+                    'message': '输出文件路径缺失'
+                }
+
+            zip_path = str(payload.get('zip_path') or '').strip()
+            if not zip_path:
+                return {
+                    'success': False,
+                    'message': '输出文件路径为空'
+                }
+
+            target = Path(zip_path).resolve()
+            parent = target.parent
+
+            if sys.platform.startswith('win'):
+                creationflags = subprocess.CREATE_NO_WINDOW
+
+                if target.exists() and target.is_file():
+                    subprocess.Popen(
+                        ['explorer', f'/select,{str(target)}'],
+                        creationflags=creationflags
+                    )
+                    return {
+                        'success': True,
+                        'message': '已打开输出文件位置'
+                    }
+
+                if parent.exists() and parent.is_dir():
+                    subprocess.Popen(
+                        ['explorer', str(parent)],
+                        creationflags=creationflags
+                    )
+                    return {
+                        'success': True,
+                        'message': '已打开输出目录'
+                    }
+            else:
+                if target.exists() and target.is_file() and parent.exists():
+                    subprocess.Popen(['xdg-open', str(parent)])
+                    return {
+                        'success': True,
+                        'message': '已打开输出目录'
+                    }
+
+                if parent.exists() and parent.is_dir():
+                    subprocess.Popen(['xdg-open', str(parent)])
+                    return {
+                        'success': True,
+                        'message': '已打开输出目录'
+                    }
+
+            return {
+                'success': False,
+                'message': f'路径不存在: {zip_path}'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'打开输出位置失败: {str(e)}'
+            }
     
     def start_packaging(self, payload: dict) -> dict:
         """
@@ -524,10 +599,10 @@ class AppApi:
     def save_settings(self, payload: dict) -> dict:
         """
         保存用户设置
-        
+
         参数:
             payload: 用户设置字典
-        
+
         返回:
             dict: {'success': bool, 'message': str}
         """
@@ -537,19 +612,19 @@ class AppApi:
                     'success': False,
                     'message': '设置内容为空'
                 }
-            
+
             # 加载现有配置
             config = load_config()
-            
+
             # 更新用户设置
             if 'user_settings' not in config:
                 config['user_settings'] = {}
-            
+
             config['user_settings'].update(payload)
-            
+
             # 保存配置
             save_config(config)
-            
+
             return {
                 'success': True,
                 'message': '设置保存成功'
@@ -560,18 +635,80 @@ class AppApi:
                 'message': f'保存设置失败: {str(e)}'
             }
 
+    def save_text_types(self, payload: dict) -> dict:
+        """
+        保存文本类型列表
+
+        参数:
+            payload: {'text_types': list[str]}
+
+        返回:
+            dict: {'success': bool, 'message': str}
+        """
+        try:
+            if not payload or 'text_types' not in payload:
+                return {
+                    'success': False,
+                    'message': '文本类型列表为空'
+                }
+
+            text_types = payload.get('text_types', [])
+            if not isinstance(text_types, list) or len(text_types) == 0:
+                return {
+                    'success': False,
+                    'message': '文本类型列表无效'
+                }
+
+            # 加载现有配置
+            config = load_config()
+
+            # 更新文本类型列表
+            config['text_types'] = [
+                {'label': t, 'value': t} for t in text_types
+            ]
+
+            # 保存配置
+            save_config(config)
+
+            return {
+                'success': True,
+                'message': '文本类型保存成功'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'保存文本类型失败: {str(e)}'
+            }
+
 
 # ============================================================================
 # 主函数入口
 # ============================================================================
+def ensure_config_exists():
+    """
+    确保配置文件存在，避免首次启动时阻塞。
+    """
+    try:
+        if not CONFIG_PATH.exists():
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            default_config = get_default_config()
+            with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+                yaml.dump(default_config, f, allow_unicode=True, default_flow_style=False)
+    except Exception as e:
+        print(f"初始化配置文件失败: {e}")
+
+
 def main():
     """
     主函数入口
-    
+
     创建pywebview窗口并启动应用。
     """
+    # 预先确保配置文件存在，避免首次启动阻塞 UI
+    ensure_config_exists()
+
     api = AppApi()
-    
+
     window = webview.create_window(
         '自动打包器',
         url=str(WEBUI_INDEX),
@@ -581,9 +718,9 @@ def main():
         min_size=(800, 600),
         text_select=True,
     )
-    
+
     api.window = window
-    
+
     def on_loaded():
         # 绑定 drop 事件（仅绑定一次）
         if not api._drop_bound:

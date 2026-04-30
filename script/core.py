@@ -18,6 +18,23 @@ import yaml
 DEFAULT_SEVEN_ZIP_PATH = r"C:\Program Files\7-Zip\7z.exe"
 
 
+def run_seven_zip_command(cmd: list[str]) -> subprocess.CompletedProcess:
+    """
+    运行 7z 命令并在 Windows 下隐藏控制台窗口。
+    """
+    run_kwargs = {
+        'capture_output': True,
+        'text': True,
+        'encoding': 'utf-8',
+        'errors': 'replace'
+    }
+
+    if os.name == 'nt':
+        run_kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+
+    return subprocess.run(cmd, **run_kwargs)
+
+
 def load_config() -> dict:
     """
     加载配置文件；若缺失则自动创建默认 setting.yaml。
@@ -166,13 +183,7 @@ def compress_to_7z(
         ] + valid_sources
         
         # 执行命令
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding='utf-8',
-            errors='replace'
-        )
+        result = run_seven_zip_command(cmd)
         
         if result.returncode == 0:
             return {
@@ -315,13 +326,7 @@ def compress_to_zip(
         ] + valid_sources
         
         # 执行命令
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            encoding='utf-8',
-            errors='replace'
-        )
+        result = run_seven_zip_command(cmd)
         
         if result.returncode == 0:
             return {
@@ -437,22 +442,30 @@ def process_packaging(
                 'zip_path': ''
             }
         
-        # 5. 创建说明文本文件
-        try:
-            text_file_path = create_text_file(str(temp_dir), text_type, text_content)
-        except Exception as e:
-            return {
-                'success': False,
-                'message': str(e),
-                'password': password,
-                'seven_z_path': str(seven_z_path),
-                'zip_path': ''
-            }
-        
+        # 5. 创建说明文本文件（仅当内容非空时）
+        text_file_path = None
+        if text_content and text_content.strip():
+            try:
+                text_file_path = create_text_file(str(temp_dir), text_type, text_content)
+            except Exception as e:
+                return {
+                    'success': False,
+                    'message': str(e),
+                    'password': password,
+                    'seven_z_path': str(seven_z_path),
+                    'zip_path': ''
+                }
+
         # 6. 打包成存储模式zip
         zip_path = output_path / f"{archive_name}.zip"
+
+        # 构建要打包的文件列表
+        files_to_zip = [str(seven_z_path), password_file_path]
+        if text_file_path:
+            files_to_zip.append(text_file_path)
+
         result = compress_to_zip(
-            source_paths=[str(seven_z_path), password_file_path, text_file_path],
+            source_paths=files_to_zip,
             output_path=str(zip_path)
         )
         
