@@ -724,21 +724,32 @@ def main():
     def on_loaded():
         # 绑定 drop 事件（仅绑定一次）
         if not api._drop_bound:
-            try:
-                drop_zone = window.dom.get_element('#dropZone')
-                if drop_zone:
-                    drop_zone.on(
-                        'drop',
-                        DOMEventHandler(api._handle_native_drop, prevent_default=True)
-                    )
-                    api._drop_bound = True
-            except Exception as e:
-                print(f'绑定拖拽事件失败: {e}')
+            import threading
+            def bind_drop_with_retry(retries=3, delay=0.1):
+                for attempt in range(retries):
+                    try:
+                        drop_zone = window.dom.get_element('#dropZone')
+                        if drop_zone:
+                            drop_zone.on(
+                                'drop',
+                                DOMEventHandler(api._handle_native_drop, prevent_default=True)
+                            )
+                            api._drop_bound = True
+                            return
+                    except Exception as e:
+                        if attempt < retries - 1:
+                            import time
+                            time.sleep(delay)
+                        else:
+                            pass  # 静默忽略，前端有备用拖拽处理
+            # 延迟绑定，确保 WebView2 完全就绪
+            threading.Timer(0.2, bind_drop_with_retry).start()
 
     window.events.loaded += on_loaded
 
-    # 启动webview（debug=False用于生产环境）
-    webview.start(debug=False)
+    # 启动webview
+    # http_server=True 可以解决某些 WebView2 初始化竞态问题
+    webview.start(debug=False, http_server=False)
 
 
 if __name__ == '__main__':
