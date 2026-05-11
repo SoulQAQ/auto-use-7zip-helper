@@ -910,13 +910,17 @@
             font-size: 13px;
             font-weight: 500;
             z-index: 1001;
-            transform: translateX(120%);
+            transform: translateX(calc(100% + 50px));
+            opacity: 0;
+            visibility: hidden;
             transition: var(--transition-bounce);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
         }
 
         .toast.active {
             transform: translateX(0);
+            opacity: 1;
+            visibility: visible;
         }
 
         .toast.error {
