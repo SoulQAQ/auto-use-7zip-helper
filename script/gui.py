@@ -714,8 +714,8 @@ def main():
         url=str(WEBUI_INDEX),
         js_api=api,
         width=900,
-        height=650,
-        min_size=(800, 600),
+        height=720,
+        min_size=(800, 720),
         text_select=True,
     )
 
