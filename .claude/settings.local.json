@@ -4,7 +4,8 @@
       "Bash(python -c \"from script.core import process_packaging; print\\('core.py OK'\\)\")",
       "Bash(python -c \"from script.gui import AppApi; print\\('gui.py OK'\\)\")",
       "Bash(python -m py_compile script/gui.py)",
-      "Bash(.venv/Scripts/python.exe -m PyInstaller \"自动打包器.spec\" --noconfirm)"
+      "Bash(.venv/Scripts/python.exe -m PyInstaller \"自动打包器.spec\" --noconfirm)",
+      "Bash(.venv/Scripts/python.exe script/gui.py)"
     ]
   }
 }

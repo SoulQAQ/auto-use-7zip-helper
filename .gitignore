@@ -13,3 +13,5 @@ dist/
 .idea/
 .vscode/
 *.log
+自动打包器_noupx.spec
+自动打包器.spec

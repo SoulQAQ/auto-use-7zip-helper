@@ -15,7 +15,14 @@ from webview.dom import DOMEventHandler
 from core import (
     generate_password,
     process_packaging,
-    delete_source_files
+    process_packaging_with_disguise,
+    delete_source_files,
+    get_media_template_path,
+    DISGUISE_TYPES,
+    has_custom_template,
+    set_default_template,
+    remove_default_template,
+    get_default_template_path
 )
 
 
@@ -189,7 +196,9 @@ class AppApi:
                     'archive_name': str,
                     'output_dir': str,
                     'seven_zip_path': str,
-                    'seven_zip_valid': bool
+                    'seven_zip_valid': bool,
+                    'disguise_types': list[dict],
+                    'disguise_info': dict  # 每种类型的详细信息
                 }
             }
         """
@@ -208,6 +217,26 @@ class AppApi:
             seven_zip_path = app_settings.get('seven_zip_path', DEFAULT_SEVEN_ZIP_PATH)
             seven_zip_valid = Path(seven_zip_path).exists() if seven_zip_path else False
 
+            # 构建伪装类型列表（基于 DISGUISE_TYPES 配置）
+            disguise_types = [{'label': '不伪装', 'value': 'none'}]
+            for type_key, type_info in DISGUISE_TYPES.items():
+                disguise_types.append({
+                    'label': type_info['label'],
+                    'value': type_key
+                })
+
+            # 构建每种伪装类型的详细信息
+            disguise_info = {}
+            for type_key, type_info in DISGUISE_TYPES.items():
+                has_custom = has_custom_template(type_key)
+                disguise_info[type_key] = {
+                    'label': type_info['label'],
+                    'ext': type_info['ext'],
+                    'can_generate': type_info['can_generate'],  # 是否可动态生成
+                    'has_custom_template': has_custom,  # 是否有自定义模板
+                    'is_available': type_info['can_generate'] or has_custom  # 是否可用
+                }
+
             return {
                 'success': True,
                 'data': {
@@ -217,7 +246,9 @@ class AppApi:
                     'archive_name': '',
                     'output_dir': str(APP_DIR),
                     'seven_zip_path': seven_zip_path,
-                    'seven_zip_valid': seven_zip_valid
+                    'seven_zip_valid': seven_zip_valid,
+                    'disguise_types': disguise_types,
+                    'disguise_info': disguise_info
                 }
             }
         except Exception as e:
@@ -475,23 +506,26 @@ class AppApi:
     def start_packaging(self, payload: dict) -> dict:
         """
         开始打包
-        
+
         参数:
             payload: {
                 'source_files': list[str],
                 'archive_name': str,
                 'text_type': str,
                 'text_content': str,
-                'output_dir': str
+                'output_dir': str,
+                'disguise_type': str,  # 可选: none/png/jpg/mp3/mp4/pdf
+                'carrier_path': str  # 可选: 自定义载体文件路径
             }
-        
+
         返回:
             dict: {
                 'success': bool,
                 'message': str,
                 'data': {
                     'password': str,
-                    'zip_path': str
+                    'zip_path': str,
+                    'disguise_path': str
                 }
             }
         """
@@ -503,42 +537,47 @@ class AppApi:
                     'message': '参数不能为空',
                     'data': None
                 }
-            
+
             source_files = payload.get('source_files', [])
             archive_name = payload.get('archive_name', '')
             text_type = payload.get('text_type', '说明文本')
             text_content = payload.get('text_content', '')
             output_dir = payload.get('output_dir', str(APP_DIR))
-            
+            disguise_type = payload.get('disguise_type', 'none')
+            carrier_path = payload.get('carrier_path')  # 可为空
+
             if not source_files:
                 return {
                     'success': False,
                     'message': '请选择要打包的文件',
                     'data': None
                 }
-            
+
             if not archive_name:
                 return {
                     'success': False,
                     'message': '请输入压缩包名称',
                     'data': None
                 }
-            
-            # 调用核心打包函数
-            result = process_packaging(
+
+            # 调用核心打包函数（含伪装）
+            result = process_packaging_with_disguise(
                 source_paths=source_files,
                 output_dir=output_dir,
                 archive_name=archive_name,
                 text_type=text_type,
-                text_content=text_content
+                text_content=text_content,
+                disguise_type=disguise_type,
+                carrier_path=carrier_path
             )
-            
+
             return {
                 'success': result.get('success', False),
                 'message': result.get('message', ''),
                 'data': {
                     'password': result.get('password', ''),
-                    'zip_path': result.get('zip_path', '')
+                    'zip_path': result.get('zip_path', ''),
+                    'disguise_path': result.get('disguise_path', '')
                 }
             }
         except Exception as e:
@@ -680,6 +719,144 @@ class AppApi:
                 'message': f'保存文本类型失败: {str(e)}'
             }
 
+    def pick_carrier_file(self, payload: dict) -> dict:
+        """
+        选择载体文件对话框
+
+        参数:
+            payload: {'media_type': str}  # png/jpg/mp3/mp4/pdf
+
+        返回:
+            dict: {'success': bool, 'data': {'path': str}}
+        """
+        try:
+            if self.window is None:
+                return {'success': False, 'data': None, 'message': '窗口未初始化'}
+
+            media_type = payload.get('media_type', 'png') if payload else 'png'
+
+            # 根据类型设置文件过滤器
+            type_filters = {
+                'png': ('PNG图片', '*.png'),
+                'jpg': ('JPG图片', '*.jpg;*.jpeg'),
+                'mp3': ('MP3音频', '*.mp3'),
+                'mp4': ('MP4视频', '*.mp4'),
+                'pdf': ('PDF文档', '*.pdf'),
+            }
+
+            filter_name, filter_pattern = type_filters.get(media_type, ('所有文件', '*.*'))
+
+            files = self.window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=(filter_name, filter_pattern)
+            )
+
+            if files:
+                return {
+                    'success': True,
+                    'data': {'path': str(files[0])}
+                }
+            else:
+                return {
+                    'success': True,
+                    'data': {'path': ''}
+                }
+        except Exception as e:
+            return {
+                'success': False,
+                'data': None,
+                'message': f'选择载体文件失败: {str(e)}'
+            }
+
+    def get_disguise_template_status(self, payload=None) -> dict:
+        """
+        获取伪装模板状态
+
+        返回:
+            dict: {
+                'success': bool,
+                'data': {
+                    'templates': dict[str, {
+                        'has_custom': bool,
+                        'can_generate': bool,
+                        'is_available': bool,
+                        'custom_path': str
+                    }]
+                }
+            }
+        """
+        try:
+            templates = {}
+            for type_key, type_info in DISGUISE_TYPES.items():
+                has_custom = has_custom_template(type_key)
+                custom_path = str(get_default_template_path(type_key)) if has_custom else ''
+                templates[type_key] = {
+                    'has_custom': has_custom,
+                    'can_generate': type_info['can_generate'],
+                    'is_available': type_info['can_generate'] or has_custom,
+                    'custom_path': custom_path
+                }
+
+            return {
+                'success': True,
+                'data': {'templates': templates}
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'data': None,
+                'message': f'获取模板状态失败: {str(e)}'
+            }
+
+    def set_disguise_template(self, payload: dict) -> dict:
+        """
+        设置伪装默认模板
+
+        参数:
+            payload: {'media_type': str, 'source_path': str}
+
+        返回:
+            dict: {'success': bool, 'message': str}
+        """
+        try:
+            if not payload:
+                return {'success': False, 'message': '参数不能为空'}
+
+            media_type = payload.get('media_type')
+            source_path = payload.get('source_path')
+
+            if not media_type or not source_path:
+                return {'success': False, 'message': '缺少必要参数'}
+
+            result = set_default_template(media_type, source_path)
+            return result
+        except Exception as e:
+            return {'success': False, 'message': f'设置模板失败: {str(e)}'}
+
+    def remove_disguise_template(self, payload: dict) -> dict:
+        """
+        移除伪装默认模板（恢复动态生成）
+
+        参数:
+            payload: {'media_type': str}
+
+        返回:
+            dict: {'success': bool, 'message': str}
+        """
+        try:
+            if not payload:
+                return {'success': False, 'message': '参数不能为空'}
+
+            media_type = payload.get('media_type')
+            if not media_type:
+                return {'success': False, 'message': '缺少媒体类型参数'}
+
+            result = remove_default_template(media_type)
+            return result
+        except Exception as e:
+            return {'success': False, 'message': f'移除模板失败: {str(e)}'}
+
 
 # ============================================================================
 # 主函数入口
@@ -714,8 +891,8 @@ def main():
         url=str(WEBUI_INDEX),
         js_api=api,
         width=900,
-        height=720,
-        min_size=(800, 720),
+        height=810,
+        min_size=(800, 810),
         text_select=True,
     )
 

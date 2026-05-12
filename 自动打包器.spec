@@ -5,7 +5,7 @@ a = Analysis(
     ['script\\gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('webui', 'webui'), ('config', 'config')],
+    datas=[('webui', 'webui'), ('config', 'config'), ('media-templates', 'media-templates')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
