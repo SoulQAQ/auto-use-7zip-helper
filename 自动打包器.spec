@@ -35,5 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    # icon='app.ico',  # 当前 app.ico 格式异常，暂时禁用以确保可打包
+    icon='app.ico',
 )

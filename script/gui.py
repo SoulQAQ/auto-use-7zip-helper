@@ -37,7 +37,8 @@ else:
 
 CONFIG_PATH = APP_DIR / 'config' / 'setting.yaml'
 WEBUI_INDEX = RESOURCE_DIR / 'webui' / 'index.html'
-DEFAULT_SEVEN_ZIP_PATH = r'C:\Program Files\7-Zip\7z.exe'
+ICON_PATH = APP_DIR / 'app.ico'
+DEFAULT_SEVEN_ZIP_PATH = r'F:\soft\7-Zip\7z.exe'
 
 # pywebview 常量兼容（新旧版本）
 OPEN_DIALOG = getattr(webview, 'OPEN_DIALOG', None)
@@ -1022,7 +1023,9 @@ def main():
 
     # 启动 webview
     # 采用 document 级 drop 监听，支持整个窗口拖拽并保留完整文件路径。
-    webview.start(debug=False, http_server=False)
+    # Windows 下通过 start(icon=...) 指定左上角窗口图标。
+    icon_arg = str(ICON_PATH) if ICON_PATH.exists() else None
+    webview.start(debug=False, http_server=False, icon=icon_arg)
 
 
 if __name__ == '__main__':

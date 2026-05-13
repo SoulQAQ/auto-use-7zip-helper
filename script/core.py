@@ -15,7 +15,7 @@ from typing import Optional
 
 import yaml
 
-DEFAULT_SEVEN_ZIP_PATH = r"C:\Program Files\7-Zip\7z.exe"
+DEFAULT_SEVEN_ZIP_PATH = r"F:\soft\7-Zip\7z.exe"
 
 
 def run_seven_zip_command(cmd: list[str]) -> subprocess.CompletedProcess:
