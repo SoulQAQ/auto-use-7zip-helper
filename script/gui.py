@@ -13,11 +13,8 @@ import yaml
 from webview.dom import DOMEventHandler
 
 from core import (
-    generate_password,
-    process_packaging,
     process_packaging_with_disguise,
     delete_source_files,
-    get_media_template_path,
     DISGUISE_TYPES,
     has_custom_template,
     set_default_template,
@@ -41,6 +38,14 @@ else:
 CONFIG_PATH = APP_DIR / 'config' / 'setting.yaml'
 WEBUI_INDEX = RESOURCE_DIR / 'webui' / 'index.html'
 DEFAULT_SEVEN_ZIP_PATH = r'C:\Program Files\7-Zip\7z.exe'
+
+# pywebview 常量兼容（新旧版本）
+OPEN_DIALOG = getattr(webview, 'OPEN_DIALOG', None)
+FOLDER_DIALOG = getattr(webview, 'FOLDER_DIALOG', None)
+if OPEN_DIALOG is None and hasattr(webview, 'FileDialog'):
+    OPEN_DIALOG = webview.FileDialog.OPEN
+if FOLDER_DIALOG is None and hasattr(webview, 'FileDialog'):
+    FOLDER_DIALOG = webview.FileDialog.FOLDER
 
 
 # ============================================================================
@@ -161,27 +166,74 @@ class AppApi:
     
     def __init__(self):
         self.window = None
-        self._drop_bound = False
+        self._global_drop_bound = False
+
+    def _to_file_types(self, file_types):
+        """
+        兼容 pywebview 旧版/新版 file_types 参数格式。
+        旧版常见: ('名称', '*.ext')
+        新版常见: ('名称 (*.ext)',)
+        """
+        def normalize_pattern(pattern: str) -> str:
+            parts = [p.strip() for p in pattern.split(';') if p.strip()]
+            normalized_parts = []
+
+            for part in parts:
+                if '*' in part:
+                    normalized_parts.append(part)
+                    continue
+
+                if part.startswith('.'):
+                    normalized_parts.append(f'*{part}')
+                    continue
+
+                if '.' in part:
+                    ext = part.split('.')[-1].strip()
+                    normalized_parts.append(f'*.{ext}')
+                    continue
+
+                # 兜底：不合法模式则回退为全部文件，避免 pywebview parse_file_type 抛错
+                return '*.*'
+
+            return ';'.join(normalized_parts) if normalized_parts else '*.*'
+
+        normalized = []
+        for item in file_types:
+            if isinstance(item, (tuple, list)) and len(item) >= 2:
+                name = str(item[0]).strip()
+                pattern = normalize_pattern(str(item[1]).strip())
+                normalized.append(f'{name} ({pattern})')
+            else:
+                normalized.append(str(item))
+        return tuple(normalized)
 
     def _handle_native_drop(self, event: dict):
         """
-        处理 pywebview 原生 drop 事件，并将完整路径回传给前端。
+        处理全局拖拽 drop 事件，将完整路径回传前端。
         """
         try:
-            files = event.get('dataTransfer', {}).get('files', [])
+            data_transfer = event.get('dataTransfer', {}) if isinstance(event, dict) else {}
+            # 兼容某些文档里的字段名
+            if not data_transfer and isinstance(event, dict):
+                data_transfer = event.get('domTransfer', {})
+
+            files = data_transfer.get('files', []) if isinstance(data_transfer, dict) else []
             paths = []
+
             for f in files:
                 full_path = f.get('pywebviewFullPath') or f.get('path')
                 if full_path:
                     paths.append(str(full_path))
 
-            if paths:
-                payload = json.dumps(paths, ensure_ascii=False)
-                # 调用前端函数，避免浏览器层无法拿到本地路径
-                self.window.evaluate_js(f'window.handleNativeDrop({payload});')
-        except Exception as e:
-            print(f'处理拖拽事件失败: {e}')
-    
+            if not paths or self.window is None:
+                return
+
+            payload = json.dumps(paths, ensure_ascii=False)
+            self.window.evaluate_js(f'window.handleNativeDrop({payload});')
+        except Exception:
+            # 拖拽辅助逻辑失败时不阻断主流程
+            pass
+
     def get_initial_state(self, payload=None) -> dict:
         """
         返回初始状态
@@ -269,10 +321,16 @@ class AppApi:
             if self.window is None:
                 return {'success': False, 'data': None, 'message': '窗口未初始化'}
             
+            if OPEN_DIALOG is None:
+                return {'success': False, 'data': None, 'message': '当前 pywebview 不支持文件选择对话框'}
+
             files = self.window.create_file_dialog(
-                webview.OPEN_DIALOG,
+                OPEN_DIALOG,
                 allow_multiple=True,
-                file_types=('所有文件 (*.*)', '压缩文件 (*.7z;*.zip;*.rar)')
+                file_types=self._to_file_types((
+                    ('所有文件', '*.*'),
+                    ('压缩文件', '*.7z;*.zip;*.rar'),
+                ))
             )
             
             if files:
@@ -291,6 +349,45 @@ class AppApi:
                 'data': None,
                 'message': f'选择文件失败: {str(e)}'
             }
+
+    def pick_seven_zip_file(self, payload=None) -> dict:
+        """
+        选择 7z.exe 文件对话框。
+
+        返回:
+            dict: {'success': bool, 'data': {'path': str}}
+        """
+        try:
+            if self.window is None:
+                return {'success': False, 'data': None, 'message': '窗口未初始化'}
+            if OPEN_DIALOG is None:
+                return {'success': False, 'data': None, 'message': '当前 pywebview 不支持文件选择对话框'}
+
+            files = self.window.create_file_dialog(
+                OPEN_DIALOG,
+                allow_multiple=False,
+                file_types=self._to_file_types((
+                    ('7z 可执行文件', '*.exe'),
+                    ('可执行文件', '*.exe'),
+                    ('所有文件', '*.*'),
+                ))
+            )
+
+            if files:
+                return {
+                    'success': True,
+                    'data': {'path': str(files[0])}
+                }
+            return {
+                'success': True,
+                'data': {'path': ''}
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'data': None,
+                'message': f'选择 7z 文件失败: {str(e)}'
+            }
     
     def pick_folder(self, payload=None) -> dict:
         """
@@ -303,7 +400,10 @@ class AppApi:
             if self.window is None:
                 return {'success': False, 'data': None, 'message': '窗口未初始化'}
             
-            folders = self.window.create_file_dialog(webview.FOLDER_DIALOG)
+            if FOLDER_DIALOG is None:
+                return {'success': False, 'data': None, 'message': '当前 pywebview 不支持文件夹选择对话框'}
+
+            folders = self.window.create_file_dialog(FOLDER_DIALOG)
             
             if folders:
                 return {
@@ -333,7 +433,10 @@ class AppApi:
             if self.window is None:
                 return {'success': False, 'data': None, 'message': '窗口未初始化'}
             
-            folders = self.window.create_file_dialog(webview.FOLDER_DIALOG)
+            if FOLDER_DIALOG is None:
+                return {'success': False, 'data': None, 'message': '当前 pywebview 不支持文件夹选择对话框'}
+
+            folders = self.window.create_file_dialog(FOLDER_DIALOG)
             
             if folders:
                 return {
@@ -742,14 +845,18 @@ class AppApi:
                 'mp3': ('MP3音频', '*.mp3'),
                 'mp4': ('MP4视频', '*.mp4'),
                 'pdf': ('PDF文档', '*.pdf'),
+                'exe': ('可执行文件', '*.exe'),
             }
 
             filter_name, filter_pattern = type_filters.get(media_type, ('所有文件', '*.*'))
 
+            if OPEN_DIALOG is None:
+                return {'success': False, 'data': None, 'message': '当前 pywebview 不支持文件选择对话框'}
+
             files = self.window.create_file_dialog(
-                webview.OPEN_DIALOG,
+                OPEN_DIALOG,
                 allow_multiple=False,
-                file_types=(filter_name, filter_pattern)
+                file_types=self._to_file_types(((filter_name, filter_pattern),))
             )
 
             if files:
@@ -891,41 +998,30 @@ def main():
         url=str(WEBUI_INDEX),
         js_api=api,
         width=900,
-        height=810,
-        min_size=(800, 810),
+        height=695,
+        min_size=(800, 695),
         text_select=True,
     )
 
     api.window = window
 
     def on_loaded():
-        # 绑定 drop 事件（仅绑定一次）
-        if not api._drop_bound:
-            import threading
-            def bind_drop_with_retry(retries=3, delay=0.1):
-                for attempt in range(retries):
-                    try:
-                        drop_zone = window.dom.get_element('#dropZone')
-                        if drop_zone:
-                            drop_zone.on(
-                                'drop',
-                                DOMEventHandler(api._handle_native_drop, prevent_default=True)
-                            )
-                            api._drop_bound = True
-                            return
-                    except Exception as e:
-                        if attempt < retries - 1:
-                            import time
-                            time.sleep(delay)
-                        else:
-                            pass  # 静默忽略，前端有备用拖拽处理
-            # 延迟绑定，确保 WebView2 完全就绪
-            threading.Timer(0.2, bind_drop_with_retry).start()
+        if api._global_drop_bound:
+            return
+
+        try:
+            doc = window.dom.document
+            if doc:
+                doc.on('drop', DOMEventHandler(api._handle_native_drop, prevent_default=True))
+                api._global_drop_bound = True
+        except Exception:
+            # 前端仍有 JS 兜底
+            pass
 
     window.events.loaded += on_loaded
 
-    # 启动webview
-    # http_server=True 可以解决某些 WebView2 初始化竞态问题
+    # 启动 webview
+    # 采用 document 级 drop 监听，支持整个窗口拖拽并保留完整文件路径。
     webview.start(debug=False, http_server=False)
 
 

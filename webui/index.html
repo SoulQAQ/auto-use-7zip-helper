@@ -140,83 +140,29 @@
             animation: fadeIn 0.4s ease-out;
         }
 
-        /* 拖拽区 */
-        .drop-zone {
-            background: var(--card-bg);
-            border: 2px dashed var(--border-color);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-            text-align: center;
-            cursor: pointer;
-            transition: var(--transition);
-            min-height: 80px;
-            display: flex;
-            flex-direction: column;
+        /* 全窗口拖拽反馈层 */
+        .global-drop-mask {
+            position: fixed;
+            inset: 10px;
+            border: 2px dashed var(--primary-color);
+            border-radius: 14px;
+            background: rgba(107, 159, 212, 0.08);
+            backdrop-filter: blur(1px);
+            display: none;
             align-items: center;
             justify-content: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .drop-zone::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: var(--primary-light);
-            opacity: 0;
-            transition: var(--transition);
-        }
-
-        .drop-zone:hover,
-        .drop-zone.drag-over {
-            border-color: var(--primary-color);
-            transform: translateY(-1px);
-            box-shadow: var(--card-shadow);
-        }
-
-        .drop-zone:hover::before,
-        .drop-zone.drag-over::before {
-            opacity: 1;
-        }
-
-        .drop-zone.drag-over {
-            transform: scale(1.01);
-            border-style: solid;
-        }
-
-        .drop-zone-icon {
-            font-size: 28px;
-            margin-bottom: 8px;
-            color: var(--text-placeholder);
-            transition: var(--transition);
-            position: relative;
-            z-index: 1;
-        }
-
-        .drop-zone:hover .drop-zone-icon {
-            transform: scale(1.1);
+            z-index: 1200;
+            pointer-events: none;
             color: var(--primary-color);
-            animation: float 1.5s ease-in-out infinite;
-        }
-
-        .drop-zone-text {
-            color: var(--text-secondary);
-            font-size: 13px;
-            position: relative;
-            z-index: 1;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
             transition: var(--transition);
         }
 
-        .drop-zone:hover .drop-zone-text {
-            color: var(--text-primary);
-        }
-
-        .drop-zone-hint {
-            color: var(--text-placeholder);
-            font-size: 11px;
-            margin-top: 4px;
-            position: relative;
-            z-index: 1;
+        .global-drop-mask.active {
+            display: flex;
+            animation: fadeIn 0.16s ease-out;
         }
 
         /* 文件列表区 */
@@ -395,8 +341,9 @@
 
         .settings-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: minmax(250px, 0.9fr) minmax(320px, 1.1fr);
             gap: 12px;
+            align-items: start;
         }
 
         .setting-item {
@@ -407,6 +354,14 @@
 
         .setting-item.full-width {
             grid-column: 1 / -1;
+        }
+
+        #carrierFileItem {
+            grid-column: 2;
+        }
+
+        #disguiseTypeSelect {
+            max-width: 100%;
         }
 
         .setting-label {
@@ -536,6 +491,11 @@
             transform: translateY(0);
         }
 
+        .btn-browse.text-btn {
+            min-width: 56px;
+            padding: 0 10px;
+        }
+
         /* 单选框组 */
         .radio-group {
             display: flex;
@@ -627,10 +587,12 @@
             border-radius: 6px;
             font-size: 13px;
             font-weight: 500;
+            line-height: 1;
             cursor: pointer;
             transition: var(--transition);
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 6px;
             position: relative;
             overflow: hidden;
@@ -836,10 +798,26 @@
             padding: 14px 20px;
             border-top: 1px solid var(--border-light);
             display: flex;
+            align-items: center;
             gap: 10px;
             justify-content: flex-end;
             background: var(--bg-color);
             border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+        }
+
+        #templateList .template-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: var(--bg-color);
+            border-radius: 8px;
+        }
+
+        #templateList .template-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         /* 加载状态 */
@@ -1028,24 +1006,6 @@
             opacity: 0.8;
         }
 
-        /* 拖拽区装饰背景 */
-        .drop-zone::after {
-            content: '';
-            position: absolute;
-            width: 100px;
-            height: 100px;
-            background: radial-gradient(circle, var(--primary-glow) 0%, transparent 70%);
-            border-radius: 50%;
-            opacity: 0;
-            transition: var(--transition);
-            pointer-events: none;
-        }
-
-        .drop-zone:hover::after {
-            opacity: 1;
-            animation: float 3s ease-in-out infinite;
-        }
-
         /* 文件列表区域空状态图标动画 */
         .empty-list::before {
             content: '📂';
@@ -1104,15 +1064,9 @@
     </style>
 </head>
 <body>
+    <div class="global-drop-mask" id="globalDropMask">释放鼠标即可添加文件</div>
     <!-- 主容器（无标题栏） -->
     <main class="main-container">
-        <!-- 拖拽区 -->
-        <div class="drop-zone" id="dropZone">
-            <div class="drop-zone-icon">📁</div>
-            <div class="drop-zone-text">拖拽文件/文件夹到此处</div>
-            <div class="drop-zone-hint">或点击选择文件</div>
-        </div>
-
         <!-- 文件列表区 -->
         <section class="file-list-section">
             <div class="section-header">
@@ -1162,7 +1116,7 @@
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <input type="text" class="setting-input" id="carrierPathInput" placeholder="不指定则使用默认" readonly style="flex: 1;">
                         <button class="btn-browse" id="btnSelectCarrier">选择</button>
-                        <button class="btn-browse" id="btnClearCarrier" title="清除选择" style="padding: 0 10px;">×</button>
+                        <button class="btn-browse text-btn" id="btnClearCarrier" title="清除选择">清空</button>
                     </div>
                     <div style="font-size: 11px; color: var(--text-placeholder); margin-top: 4px;" id="carrierHint"></div>
                 </div>
@@ -1311,13 +1265,16 @@
             resultZipPath: '',      // 最近一次打包输出文件
             isProcessing: false     // 是否正在处理
         };
+        let eventsBound = false;
+        let dragDepth = 0;
+        let dragEventsBound = false;
 
         // ============================================================================
         // API调用封装
         // ============================================================================
         async function callApi(method, payload = {}) {
             if (!window.pywebview || !window.pywebview.api) {
-                throw new Error('pywebview API 不可用');
+                throw new Error('后端 API 尚未就绪，请稍后重试');
             }
             const apiMethod = window.pywebview.api[method];
             if (typeof apiMethod !== 'function') {
@@ -1357,6 +1314,41 @@
                 overlay.classList.add('active');
             } else {
                 overlay.classList.remove('active');
+            }
+        }
+
+        function showGlobalDropMask(show) {
+            const mask = document.getElementById('globalDropMask');
+            if (!mask) return;
+            if (show) {
+                mask.classList.add('active');
+            } else {
+                mask.classList.remove('active');
+            }
+        }
+
+        function isDisguiseReady() {
+            if (state.disguiseType === 'none') {
+                return true;
+            }
+            const info = state.disguiseInfo[state.disguiseType] || {};
+            if (state.carrierPath) {
+                return true;
+            }
+            return !!(info.can_generate || info.has_custom_template || info.is_available);
+        }
+
+        function updateStartButtonState() {
+            const btn = document.getElementById('btnStart');
+            if (!btn) return;
+
+            const ready = isDisguiseReady();
+            btn.disabled = !ready;
+
+            if (!ready) {
+                btn.title = '当前伪装类型没有可用载体，请先选择载体文件或在设置中配置默认模板';
+            } else {
+                btn.title = '';
             }
         }
 
@@ -1409,29 +1401,32 @@
         // 拖拽功能
         // ============================================================================
         function setupDragDrop() {
-            const dropZone = document.getElementById('dropZone');
+            if (dragEventsBound) return;
+            dragEventsBound = true;
 
-            // 阻止默认拖拽行为
+            // 阻止默认拖拽行为（整个窗口）
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, preventDefaults, false);
-                document.body.addEventListener(eventName, preventDefaults, false);
+                document.addEventListener(eventName, preventDefaults, false);
             });
 
-            // 高亮拖拽区域
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => {
-                    dropZone.classList.add('drag-over');
-                }, false);
-            });
+            document.addEventListener('dragenter', () => {
+                dragDepth += 1;
+                showGlobalDropMask(true);
+            }, false);
 
-            ['dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, () => {
-                    dropZone.classList.remove('drag-over');
-                }, false);
-            });
+            document.addEventListener('dragover', () => {
+                showGlobalDropMask(true);
+            }, false);
 
-            // 处理拖放
-            dropZone.addEventListener('drop', handleDrop, false);
+            document.addEventListener('dragleave', () => {
+                dragDepth = Math.max(0, dragDepth - 1);
+                if (dragDepth === 0) {
+                    showGlobalDropMask(false);
+                }
+            }, false);
+
+            // 处理整窗拖放
+            document.addEventListener('drop', handleDrop, false);
         }
 
         function preventDefaults(e) {
@@ -1440,6 +1435,9 @@
         }
 
         async function handleDrop(e) {
+            dragDepth = 0;
+            showGlobalDropMask(false);
+
             const files = e?.dataTransfer?.files;
             if (!files || files.length === 0) return;
 
@@ -1471,6 +1469,8 @@
 
         // Python 侧 drop 事件回调入口
         window.handleNativeDrop = async function(paths) {
+            dragDepth = 0;
+            showGlobalDropMask(false);
             if (!Array.isArray(paths) || paths.length === 0) return;
             await addFiles(paths);
         };
@@ -1550,6 +1550,10 @@
             // 渲染模板列表
             await renderTemplateList();
 
+            if (!window.pywebview || !window.pywebview.api) {
+                statusSpan.innerHTML = '<span style="color: var(--warning-color);">后端 API 尚未就绪，稍后可重试保存</span>';
+            }
+
             modal.classList.add('active');
         }
 
@@ -1575,14 +1579,14 @@
                         : '<span style="color: var(--warning-color);">未设置</span>');
 
                 html += `
-                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: var(--bg-color); border-radius: 6px;">
+                    <div class="template-row">
                         <div>
                             <div style="font-weight: 500; font-size: 13px;">${typeName}</div>
                             <div style="font-size: 11px;">${statusText}</div>
                         </div>
-                        <div style="display: flex; gap: 6px;">
+                        <div class="template-actions">
+                            <button class="btn-browse" onclick="removeTemplate('${typeKey}')" style="font-size: 11px; padding: 4px 10px; color: var(--danger-color);">恢复默认</button>
                             <button class="btn-browse" onclick="setTemplate('${typeKey}')" style="font-size: 11px; padding: 4px 10px;">设置</button>
-                            ${hasCustom ? `<button class="btn-browse" onclick="removeTemplate('${typeKey}')" style="font-size: 11px; padding: 4px 10px; color: var(--danger-color);">恢复</button>` : ''}
                         </div>
                     </div>
                 `;
@@ -1605,6 +1609,9 @@
                         if (statusResult.success) {
                             state.disguiseInfo = statusResult.data.templates;
                             await renderTemplateList();
+                            renderDisguiseSelect();
+                            updateCarrierVisibility();
+                            updateStartButtonState();
                         }
                     } else {
                         showToast(setResult.message, 'error');
@@ -1625,6 +1632,9 @@
                     if (statusResult.success) {
                         state.disguiseInfo = statusResult.data.templates;
                         await renderTemplateList();
+                        renderDisguiseSelect();
+                        updateCarrierVisibility();
+                        updateStartButtonState();
                     }
                 } else {
                     showToast(result.message, 'error');
@@ -1640,9 +1650,13 @@
 
         async function browseSevenZip() {
             try {
-                const result = await callApi('pick_files');
-                if (result.success && result.data.files.length > 0) {
-                    document.getElementById('settingsSevenZipPath').value = result.data.files[0];
+                const result = await callApi('pick_seven_zip_file');
+                if (!result.success) {
+                    showToast(result.message || '打开文件选择器失败', 'error');
+                    return;
+                }
+                if (result.data.path) {
+                    document.getElementById('settingsSevenZipPath').value = result.data.path;
                     await validateSettingsSevenZip();
                 }
             } catch (error) {
@@ -1707,6 +1721,11 @@
                 return;
             }
 
+            if (!isDisguiseReady()) {
+                showToast('当前伪装类型没有可用载体，请先选择载体文件或在设置中配置默认模板', 'error');
+                return;
+            }
+
             // 计算输出目录
             const outputDir = calculateOutputDir();
             if (!outputDir) {
@@ -1738,6 +1757,7 @@
                 });
 
                 showLoading(false);
+                updateStartButtonState();
 
                 if (result.success) {
                     showResultDialog({
@@ -1962,8 +1982,8 @@
         // 事件绑定
         // ============================================================================
         function bindEvents() {
-            // 拖拽区点击
-            document.getElementById('dropZone').addEventListener('click', pickFiles);
+            if (eventsBound) return;
+            eventsBound = true;
 
             // 添加文件按钮
             document.getElementById('btnAddFiles').addEventListener('click', pickFiles);
@@ -1999,6 +2019,7 @@
                 state.carrierPath = '';
                 document.getElementById('carrierPathInput').value = '';
                 updateCarrierVisibility();
+                updateStartButtonState();
             });
 
             // 载体文件选择
@@ -2078,21 +2099,26 @@
                 const info = state.disguiseInfo[opt.value] || {};
                 const selected = opt.value === state.disguiseType;
                 const unavailable = opt.value !== 'none' && !info.is_available;
-                return `<option value="${opt.value}" ${selected ? 'selected' : ''} ${unavailable ? 'disabled' : ''}>${opt.label}${unavailable ? ' (需设置模板)' : ''}</option>`;
+                return `<option value="${opt.value}" ${selected ? 'selected' : ''}>${opt.label}${unavailable ? ' (需载体/模板)' : ''}</option>`;
             }).join('');
         }
 
         function updateCarrierVisibility() {
             const carrierItem = document.getElementById('carrierFileItem');
             const carrierHint = document.getElementById('carrierHint');
+            const carrierPathInput = document.getElementById('carrierPathInput');
 
             if (state.disguiseType === 'none') {
                 carrierItem.style.display = 'none';
+                updateStartButtonState();
                 return;
             }
 
             carrierItem.style.display = 'flex';
             const info = state.disguiseInfo[state.disguiseType] || {};
+            carrierPathInput.placeholder = info.can_generate
+                ? '不指定则自动生成随机载体'
+                : '不指定则使用默认模板';
 
             if (info.can_generate) {
                 carrierHint.textContent = info.has_custom_template
@@ -2103,6 +2129,7 @@
                     ? '已设置默认模板，不指定则使用模板；指定文件则使用指定文件'
                     : '此类型需要指定载体文件或在设置中配置默认模板';
             }
+            updateStartButtonState();
         }
 
         async function selectCarrierFile() {
@@ -2110,7 +2137,8 @@
                 const result = await callApi('pick_carrier_file', { media_type: state.disguiseType });
                 if (result.success && result.data.path) {
                     state.carrierPath = result.data.path;
-                    document.getElementById('carrierPathInput').value = getFileName(state.carrierPath);
+                    document.getElementById('carrierPathInput').value = state.carrierPath;
+                    updateStartButtonState();
                 }
             } catch (error) {
                 showToast('选择载体文件失败: ' + error.message, 'error');
@@ -2120,10 +2148,7 @@
         function clearCarrierFile() {
             state.carrierPath = '';
             document.getElementById('carrierPathInput').value = '';
-        }
-
-        function getFileName(path) {
-            return path.replace(/\\/g, '/').split('/').pop() || path;
+            updateStartButtonState();
         }
 
         function openAddTextTypeModal() {
@@ -2176,8 +2201,16 @@
         // ============================================================================
         let bootstrapStarted = false;  // 防止重复调用
         let bootstrapInFlight = false; // 防止并发初始化
+        let bootstrapRetryTimer = null;
 
-        async function waitForApiMethod(method, timeoutMs = 10000) {
+        // 先绑定 UI 事件，避免 API 初始化失败时界面按钮无响应
+        bindEvents();
+        setupDragDrop();
+        renderFileList();
+        updateCarrierVisibility();
+        updateStartButtonState();
+
+        async function waitForApiMethod(method, timeoutMs = 20000) {
             const start = Date.now();
 
             while (Date.now() - start < timeoutMs) {
@@ -2251,21 +2284,36 @@
                     }
                 }
 
-                // 绑定事件
-                bindEvents();
+                // 启动后补一次设置模板状态，减少初次状态不同步
+                try {
+                    const templateStatus = await callApi('get_disguise_template_status');
+                    if (templateStatus.success && templateStatus.data?.templates) {
+                        state.disguiseInfo = templateStatus.data.templates;
+                        renderDisguiseSelect();
+                        updateCarrierVisibility();
+                    }
+                } catch (_e) {}
 
-                // 设置拖拽
-                setupDragDrop();
+                // 再次校准 7z 状态，处理启动早期偶发状态不一致
+                await validateSevenZip(false);
 
-                // 渲染文件列表
-                renderFileList();
+                updateStartButtonState();
 
                 // 初始化成功后再标记已启动，失败时允许后续重试
                 bootstrapStarted = true;
+                if (bootstrapRetryTimer) {
+                    clearTimeout(bootstrapRetryTimer);
+                    bootstrapRetryTimer = null;
+                }
 
             } catch (error) {
-                console.error('初始化失败:', error);
-                showToast('初始化失败: ' + error.message, 'error');
+                console.warn('初始化延迟:', error);
+                if (!bootstrapStarted && !bootstrapRetryTimer) {
+                    bootstrapRetryTimer = setTimeout(() => {
+                        bootstrapRetryTimer = null;
+                        bootstrap();
+                    }, 1000);
+                }
             } finally {
                 bootstrapInFlight = false;
             }
